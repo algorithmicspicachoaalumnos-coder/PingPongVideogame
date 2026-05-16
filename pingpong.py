@@ -31,7 +31,7 @@ paleta2_rect.left = paleta_margin
 paleta2_speed = paleta_speed
 
 # Velocidad dinámica de la pelota: constantes configurables
-# incremento por segundo (por ejemplo 0.05 = +5% cada segundo)
+# incremento de la velocidad de la pelopta conforme cada 0.05
 SPEED_INCREASE_PER_SECOND = 0.05
 # multiplicador máximo para evitar que sea imposible
 MAX_SPEED_MULTIPLIER = 3.0
@@ -69,10 +69,41 @@ if os.path.exists(paleta2_path):
     except Exception:
         paleta2_img = None
 
+# Cargamos imagen para el game over si existe (algoolympics.png)
+alg_img = None
+alg_rect = None
+alg_path = os.path.join(script_dir, "algoolympics.png")
+if os.path.exists(alg_path):
+    try:
+        alg_img = pygame.image.load(alg_path).convert_alpha()
+        aw, ah = alg_img.get_size()
+        # limitar tamaño para que quepa bien debajo del texto
+        max_w = int(ancho * 0.5)
+        max_h = int(alto * 0.25)
+        scale = min(1.0, max_w / aw if aw else 1.0, max_h / ah if ah else 1.0)
+        if scale < 1.0:
+            new_w = max(1, int(aw * scale))
+            new_h = max(1, int(ah * scale))
+            alg_img = pygame.transform.smoothscale(alg_img, (new_w, new_h))
+        alg_rect = alg_img.get_rect()
+    except Exception:
+        alg_img = None
+        alg_rect = None
+
 while ejecutando:
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
             ejecutando = False
+        # Reiniciar si juego terminado y presionan R
+        if evento.type == pygame.KEYDOWN:
+            if evento.key == pygame.K_r:
+                # reiniciar puntuaciones y pelota
+                score1 = 0
+                score2 = 0
+                ball_rect.center = (ancho//2, alto//2)
+                ball_vel = [3, 2]
+                ball_pos = [float(ball_rect.x), float(ball_rect.y)]
+                last_serve_time = pygame.time.get_ticks()
 
     # Manejo de teclas para mover la paleta (Flecha arriba, Flecha abajo)
     teclas = pygame.key.get_pressed()
@@ -156,10 +187,26 @@ while ejecutando:
     ball_speed_multiplier = min(MAX_SPEED_MULTIPLIER, 1.0 + SPEED_INCREASE_PER_SECOND * elapsed_s)
 
     # Move ball usando posición en float para suavizar incrementos pequeños
-    ball_pos[0] += ball_vel[0] * ball_speed_multiplier
-    ball_pos[1] += ball_vel[1] * ball_speed_multiplier
-    ball_rect.x = int(ball_pos[0])
-    ball_rect.y = int(ball_pos[1])
+    # Si alguno llegó a 3, dejamos el juego en estado 'terminado' y no movemos la pelota
+    game_over = False
+    loser_text = ""
+    if score1 >= 3:
+        game_over = True
+        # P1 alcanzó 6 → P1 ganó, por lo tanto P2 perdió
+        loser_text = "P2 perdio"
+    elif score2 >= 3:
+        game_over = True
+        loser_text = "P1 perdio"
+
+    if not game_over:
+        ball_pos[0] += ball_vel[0] * ball_speed_multiplier
+        ball_pos[1] += ball_vel[1] * ball_speed_multiplier
+        ball_rect.x = int(ball_pos[0])
+        ball_rect.y = int(ball_pos[1])
+    else:
+        # fijar la pelota en el centro cuando terminó
+        ball_rect.center = (ancho//2, alto//2)
+        ball_pos = [float(ball_rect.x), float(ball_rect.y)]
 
     # Bounce on top/bottom
     if ball_rect.top <= 0:
@@ -225,6 +272,28 @@ while ejecutando:
     score_surf2 = font.render(f"P2: {score2}", True, (255, 255, 255))
     ventana.blit(score_surf, (ancho - 120, 10))
     ventana.blit(score_surf2, (20, 10))
+
+    # Si game_over, mostrar en rojo quién perdió
+    if 'game_over' in locals() and game_over:
+        large_font = pygame.font.SysFont(None, 72)
+        red = (200, 0, 0)
+        loser_surf = large_font.render(loser_text, True, red)
+        # posición del texto principal ligeramente arriba del centro
+        text_x = ancho//2 - loser_surf.get_width()//2
+        text_y = alto//2 - loser_surf.get_height()//2 - 40
+        ventana.blit(loser_surf, (text_x, text_y))
+        # si hay imagen la mostramos debajo del texto
+        small = pygame.font.SysFont(None, 24)
+        info = small.render("Presiona R para reiniciar", True, red)
+        if alg_img:
+            alg_rect.centerx = ancho//2
+            alg_rect.top = text_y + loser_surf.get_height() + 10
+            ventana.blit(alg_img, alg_rect)
+            # colocar la instrucción un poco más abajo de la imagen
+            ventana.blit(info, (ancho//2 - info.get_width()//2, alg_rect.bottom + 10))
+        else:
+            # instrucción justo debajo del texto si no hay imagen
+            ventana.blit(info, (ancho//2 - info.get_width()//2, text_y + loser_surf.get_height() + 10))
 
     pygame.display.flip()
     clock.tick(60)
